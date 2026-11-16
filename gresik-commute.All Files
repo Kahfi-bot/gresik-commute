@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GRESIK-COMMUTE | Sistem Informasi Kepadatan Truk & Rute Alternatif Cerdas</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            slate: {
+              850: '#161e2e',
+              950: '#0b0f19',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom scrollbar for clean commuter dashboard look */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.85); opacity: 0.9; }
+      70% { transform: scale(1.6); opacity: 0; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+    .animate-pulse-ring {
+      animation: pulse-ring 2s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+    }
+    @keyframes scanline {
+      0% { transform: translateY(-100%); }
+      100% { transform: translateY(400%); }
+    }
+    .cctv-scanline {
+      animation: scanline 4s linear infinite;
+    }
+    .road-segment {
+      cursor: pointer;
+      transition: stroke-width 0.2s ease, filter 0.2s ease;
+    }
+    .road-segment:hover {
+      stroke-width: 9;
+      filter: drop-shadow(0 0 6px rgba(255,255,255,0.4));
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col selection:bg-amber-500 selection:text-slate-950">
+
+  <!-- Toast Notification Container (Replaces alert()) -->
+  <div id="toast-container" class="fixed top-20 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <!-- Top Header & Branding -->
+  <header class="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 shadow-lg">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <!-- Brand Identity -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">
+          <!-- Truck + Route Icon -->
+          <svg class="w-6 h-6 text-slate-950" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-extrabold text-lg sm:text-xl tracking-tight text-white">GRESIK<span class="text-amber-400">-COMMUTE</span></h1>
+            <span class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30">
+              PKM-KC v1.0
+            </span>
+          </div>
+          <p class="text-xs text-slate-400">Radar Truk Berat & Rute Alternatif Kawasan Industri Gresik</p>
+        </div>
+      </div>
+
+      <!-- Live Status, Shift Indicator & Clock -->
+      <div class="flex items-center gap-2 sm:gap-4 ml-auto sm:ml-0">
+        <!-- Corridor Status Badge -->
+        <div class="hidden md:flex items-center gap-2 bg-rose-500/10 border border-rose-500/30 px-3 py-1.5 rounded-xl">
+          <span class="relative flex h-2.5 w-2.5">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+          </span>
+          <span class="text-xs font-semibold text-rose-300">Koridor Manyar-Kebomas: PADAT TRUK</span>
+        </div>
+
+        <!-- Shift Badge -->
+        <div id="header-shift-badge" class="flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl">
+          <svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span id="shift-label" class="text-xs font-semibold text-slate-200">Sif 2 Sore (15:00)</span>
+        </div>
+
+        <!-- Live Clock -->
+        <div class="bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl text-right">
+          <div id="live-clock" class="font-mono text-xs sm:text-sm font-bold text-emerald-400">14:42:10 WIB</div>
+          <div class="text-[10px] text-slate-400 hidden sm:block">Kab. Gresik, Jatim</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shift Schedule Alert Banner -->
+    <div id="shift-alert-banner" class="bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-rose-500/20 border-t border-amber-500/30 px-4 py-2">
+      <div class="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+        <div class="flex items-start sm:items-center gap-2">
+          <span class="px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 font-bold uppercase text-[10px] shrink-0 mt-0.5 sm:mt-0">Peringatan Sif</span>
+          <p id="shift-alert-text" class="text-amber-100 font-medium">
+            Menjelang pergantian <strong>Sif 2 Pabrik (15:00 WIB)</strong> & jam keluar kontainer Pelabuhan Manyar. Potensi antrean panjang di Simpang Kebomas & Jl. Raya Manyar.
+          </p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="text-emerald-300 font-semibold">Saran Berangkat: &lt; 14:30 atau &gt; 16:15 WIB</span>
+          <button onclick="document.getElementById('shift-alert-banner').classList.add('hidden')" class="text-slate-400 hover:text-white p-1 rounded-lg" title="Tutup peringatan">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs (Desktop & Mobile Friendly) -->
+  <nav class="bg-slate-900/80 border-b border-slate-800 sticky top-[64px] sm:top-[68px] z-30 backdrop-blur-sm">
+    <div class="max-w-7xl mx-auto px-4 flex items-center gap-1 sm:gap-2 overflow-x-auto py-2 no-scrollbar">
+      <button onclick="switchTab('peta')" id="tab-btn-peta" class="tab-btn active flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 transition whitespace-nowrap">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+        Peta & Rute Cerdas
+      </button>
+      <button onclick="switchTab('cctv')" id="tab-btn-cctv" class="tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-slate-300 hover:bg-slate-800 transition whitespace-nowrap">
+        <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+        CCTV AI Truk
+        <span class="px-1.5 py-0.5 text-[10px] rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30">4 Live</span>
+      </button>
+      <button onclick="switchTab('lapor')" id="tab-btn-lapor" class="tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-slate-300 hover:bg-slate-800 transition whitespace-nowrap">
+        <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        Lapor Warga
+        <span id="report-count-badge" class="px-1.5 py-0.5 text-[10px] rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">5</span>
+      </button>
+      <button onclick="switchTab('sif')" id="tab-btn-sif" class="tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-slate-300 hover:bg-slate-800 transition whitespace-nowrap">
+        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        Jadwal Sif & Prediksi
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main Content Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-5">
+
+    <!-- ==================== TAB 1: PETA & RUTE CERDAS ==================== -->
+    <section id="tab-peta" class="tab-content space-y-6">
+      <!-- Quick KPI Summary Row -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span>Truk Berat Aktif</span>
+            <span class="text-rose-400 font-semibold">+28% Sif</span>
+          </div>
+          <div class="text-2xl font-extrabold text-white font-mono">142 <span class="text-xs font-sans font-normal text-slate-400">truk/jam</span></div>
+          <div class="text-[11px] text-slate-400 mt-1">Koridor Manyar – Kebomas</div>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span>Kecepatan Arteri</span>
+            <span class="text-amber-400 font-semibold">Melambat</span>
+          </div>
+          <div class="text-2xl font-extrabold text-amber-400 font-mono">14 <span class="text-xs font-sans font-normal text-slate-400">km/jam</span></div>
+          <div class="text-[11px] text-slate-400 mt-1">Jl. Raya Manyar & Veteran</div>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span>Jalur Tikus Aman</span>
+            <span class="text-emerald-400 font-semibold">Lancar</span>
+          </div>
+          <div class="text-2xl font-extrabold text-emerald-400 font-mono">38 <span class="text-xs font-sans font-normal text-slate-400">km/jam</span></div>
+          <div class="text-[11px] text-slate-400 mt-1">Suci–Pongangan & Peganden</div>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span>Estimasi Hemat Waktu</span>
+            <span class="text-sky-400 font-semibold">AI Routing</span>
+          </div>
+          <div id="kpi-time-saved" class="text-2xl font-extrabold text-sky-400 font-mono">24 <span class="text-xs font-sans font-normal text-slate-400">menit</span></div>
+          <div class="text-[11px] text-slate-400 mt-1">Rata-rata komuter motor/mobil</div>
+        </div>
+      </div>
+
+      <!-- Main Split Layout: Interactive Map (Left/Top) + Smart Route Finder (Right/Bottom) -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Interactive Gresik Industrial Corridor Map -->
+        <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex flex-col shadow-xl">
+          <div class="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 class="font-bold text-base text-white flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                Peta Koridor Industri Gresik (Interaktif)
+              </h2>
+              <p class="text-xs text-slate-400">Klik ruas jalan atau ikon kamera CCTV untuk inspeksi kepadatan truk</p>
+            </div>
+            <!-- Legend -->
+            <div class="flex items-center gap-3 text-[11px] font-medium bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>Macet Truk</span>
+              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>Padat</span>
+              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>Jalur Aman</span>
+            </div>
+          </div>
+
+          <!-- SVG Map Canvas -->
+          <div class="relative bg-slate-950 w-full aspect-[16/11] sm:aspect-[16/10] select-none overflow-hidden">
+            <svg id="gresik-map-svg" viewBox="0 0 800 500" class="w-full h-full">
+              <defs>
+                <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.7" />
+                </pattern>
+                <linearGradient id="seaGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="#0f172a" />
+                  <stop offset="100%" stop-color="#0c243c" />
+                </linearGradient>
+              </defs>
+
+              <!-- Background Grid -->
+              <rect width="800" height="500" fill="url(#grid)" />
+
+              <!-- Selat Madura / Coastline (East / Top-Right) -->
+              <path d="M 520 0 L 800 0 L 800 500 L 710 500 Q 670 380 650 280 Q 610 150 520 0 Z" fill="url(#seaGrad)" opacity="0.85" />
+              <text x="690" y="130" fill="#38bdf8" opacity="0.35" font-size="13" font-weight="700" letter-spacing="2" transform="rotate(18 690,130)">SELAT MADURA</text>
+              <text x="640" y="75" fill="#7dd3fc" opacity="0.6" font-size="10" font-weight="600">Pelabuhan JIIPE & Terminal</text>
+
+              <!-- Kali Lamong (South Border) -->
+              <path d="M 80 465 Q 320 440 520 470 T 730 485" fill="none" stroke="#1d4ed8" stroke-width="6" opacity="0.35" />
+              <text x="360" y="452" fill="#60a5fa" opacity="0.6" font-size="10" font-style="italic">Sungai Kali Lamong (Batas Surabaya)</text>
+
+              <!-- ================= ROAD SEGMENTS (CLICKABLE) ================= -->
+              <!-- 1. Jl. Daendels (North - Manyar to Panceng) -->
+              <path id="road-daendels" onclick="selectRoad('daendels')" class="road-segment"
+                d="M 120 55 Q 310 65 495 85" fill="none" stroke="#f59e0b" stroke-width="6" stroke-linecap="round" />
+
+              <!-- 2. Jl. Raya Manyar (JIIPE to Exit Tol Manyar / Sembayat) - HEAVY TRUCK CONGESTION -->
+              <path id="road-manyar" onclick="selectRoad('manyar')" class="road-segment"
+                d="M 495 85 L 545 185 L 565 265" fill="none" stroke="#ef4444" stroke-width="8" stroke-linecap="round" />
+
+              <!-- 3. Jl. Dr. Wahidin Sudirohusodo (Kebomas - Bunder) - CONGESTED -->
+              <path id="road-kebomas" onclick="selectRoad('kebomas')" class="road-segment"
+                d="M 565 265 L 430 335 L 285 375" fill="none" stroke="#ef4444" stroke-width="8" stroke-linecap="round" />
+
+              <!-- 4. Jl. Veteran (Segoromadu - Semen Indonesia - Romokalisari) - HEAVY TRUCKS -->
+              <path id="road-veteran" onclick="selectRoad('veteran')" class="road-segment"
+                d="M 565 265 L 620 355 L 645 455" fill="none" stroke="#ef4444" stroke-width="7" stroke-linecap="round" />
+
+              <!-- 5. Exit Tol Romokalisari - Tol Surabaya-Gresik -->
+              <path id="road-romokalisari" onclick="selectRoad('romokalisari')" class="road-segment"
+                d="M 645 455 L 470 415 L 285 375" fill="none" stroke="#f59e0b" stroke-width="6" stroke-dasharray="10,5" stroke-linecap="round" />
+
+              <!-- 6. Jalan Alternatif Suci - Pongangan (Jalur Tikus Aman) -->
+              <path id="road-suci" onclick="selectRoad('suci')" class="road-segment"
+                d="M 495 85 Q 420 175 435 245 Q 450 290 430 335" fill="none" stroke="#10b981" stroke-width="6" stroke-linecap="round" />
+
+              <!-- 7. Jalur Tikus Peganden - Bunder (Bebas Truk Kontainer) -->
+              <path id="road-peganden" onclick="selectRoad('peganden')" class="road-segment"
+                d="M 435 245 Q 335 265 285 375" fill="none" stroke="#10b981" stroke-width="6" stroke-linecap="round" />
+
+              <!-- 8. Koridor Cerme - Terminal Bunder -->
+              <path id="road-cerme" onclick="selectRoad('cerme')" class="road-segment"
+                d="M 115 430 L 210 395 L 285 375" fill="none" stroke="#10b981" stroke-width="6" stroke-linecap="round" />
+
+              <!-- ================= LANDMARK NODES ================= -->
+              <!-- JIIPE Manyar -->
+              <g transform="translate(495, 85)" class="cursor-pointer" onclick="selectRoad('manyar')">
+                <circle r="13" fill="#ef4444" opacity="0.25" class="animate-pulse-ring" />
+                <circle r="7" fill="#ef4444" stroke="#fff" stroke-width="2" />
+                <rect x="12" y="-14" width="118" height="22" rx="6" fill="#0f172a" stroke="#334155" />
+                <text x="19" y="1" fill="#f8fafc" font-size="11" font-weight="700">KEK JIIPE Manyar</text>
+              </g>
+
+              <!-- Jl. Daendels Label -->
+              <g transform="translate(230, 58)" class="cursor-pointer" onclick="selectRoad('daendels')">
+                <rect x="-55" y="-12" width="110" height="20" rx="5" fill="#1e293b" stroke="#f59e0b" stroke-width="1" />
+                <text x="0" y="2" text-anchor="middle" fill="#fcd34d" font-size="10" font-weight="600">Jl. Daendels</text>
+              </g>
+
+              <!-- Jl. Raya Manyar / Maspion -->
+              <g transform="translate(550, 180)" class="cursor-pointer" onclick="selectRoad('manyar')">
+                <circle r="6" fill="#f97316" stroke="#fff" stroke-width="1.5" />
+                <rect x="10" y="-11" width="128" height="22" rx="6" fill="#0f172a" stroke="#334155" />
+                <text x="17" y="3" fill="#fdba74" font-size="10" font-weight="600">Jl. Raya Manyar / KIM</text>
+              </g>
+
+              <!-- Simpang Empat Kebomas -->
+              <g transform="translate(565, 265)" class="cursor-pointer" onclick="selectRoad('kebomas')">
+                <circle r="15" fill="#ef4444" opacity="0.3" class="animate-pulse-ring" />
+                <circle r="8" fill="#ef4444" stroke="#fff" stroke-width="2" />
+                <rect x="12" y="-13" width="132" height="24" rx="6" fill="#0f172a" stroke="#ef4444" />
+                <text x="19" y="3" fill="#fecaca" font-size="11" font-weight="700">Simpang 4 Kebomas</text>
+              </g>
+
+              <!-- Jalan Alternatif Suci-Pongangan -->
+              <g transform="translate(425, 215)" class="cursor-pointer" onclick="selectRoad('suci')">
+                <rect x="-128" y="-12" width="122" height="22" rx="6" fill="#064e3b" stroke="#10b981" />
+                <text x="-67" y="3" text-anchor="middle" fill="#a7f3d0" font-size="10" font-weight="700">Alt. Suci-Pongangan</text>
+              </g>
+
+              <!-- Jalur Tikus Peganden-Bunder -->
+              <g transform="translate(335, 295)" class="cursor-pointer" onclick="selectRoad('peganden')">
+                <rect x="-125" y="-11" width="126" height="21" rx="6" fill="#064e3b" stroke="#10b981" />
+                <text x="-62" y="3" text-anchor="middle" fill="#6ee7b7" font-size="10" font-weight="600">Tikus Peganden-Bunder</text>
+              </g>
+
+              <!-- Terminal Bunder -->
+              <g transform="translate(285, 375)" class="cursor-pointer" onclick="selectRoad('kebomas')">
+                <circle r="7" fill="#38bdf8" stroke="#fff" stroke-width="2" />
+                <rect x="-48" y="11" width="96" height="20" rx="5" fill="#0f172a" stroke="#38bdf8" />
+                <text x="0" y="25" text-anchor="middle" fill="#bae6fd" font-size="10" font-weight="700">Terminal Bunder</text>
+              </g>
+
+              <!-- Cerme -->
+              <g transform="translate(115, 430)" class="cursor-pointer" onclick="selectRoad('cerme')">
+                <circle r="7" fill="#10b981" stroke="#fff" stroke-width="2" />
+                <rect x="-35" y="-26" width="70" height="20" rx="5" fill="#0f172a" stroke="#10b981" />
+                <text x="0" y="-12" text-anchor="middle" fill="#a7f3d0" font-size="10" font-weight="700">Cerme</text>
+              </g>
+
+              <!-- Jl. Veteran -->
+              <g transform="translate(620, 355)" class="cursor-pointer" onclick="selectRoad('veteran')">
+                <circle r="6" fill="#ef4444" stroke="#fff" stroke-width="1.5" />
+                <rect x="10" y="-11" width="118" height="21" rx="5" fill="#0f172a" stroke="#ef4444" />
+                <text x="16" y="3" fill="#fca5a5" font-size="10" font-weight="600">Jl. Veteran (Semen)</text>
+              </g>
+
+              <!-- Exit Tol Romokalisari -->
+              <g transform="translate(645, 455)" class="cursor-pointer" onclick="selectRoad('romokalisari')">
+                <circle r="7" fill="#f59e0b" stroke="#fff" stroke-width="2" />
+                <rect x="-135" y="10" width="142" height="21" rx="5" fill="#0f172a" stroke="#f59e0b" />
+                <text x="-64" y="24" text-anchor="middle" fill="#fde68a" font-size="10" font-weight="700">Exit Tol Romokalisari</text>
+              </g>
+
+              <!-- ================= CCTV CAMERA NODES ================= -->
+              <g onclick="openCctvModal('kebomas')" class="cursor-pointer" transform="translate(555, 245)">
+                <rect x="-12" y="-12" width="24" height="24" rx="6" fill="#0284c7" stroke="#fff" stroke-width="1.5" />
+                <text x="0" y="4" text-anchor="middle" fill="#fff" font-size="11">📷</text>
+              </g>
+              <g onclick="openCctvModal('jiipe')" class="cursor-pointer" transform="translate(480, 105)">
+                <rect x="-12" y="-12" width="24" height="24" rx="6" fill="#0284c7" stroke="#fff" stroke-width="1.5" />
+                <text x="0" y="4" text-anchor="middle" fill="#fff" font-size="11">📷</text>
+              </g>
+              <g onclick="openCctvModal('veteran')" class="cursor-pointer" transform="translate(605, 340)">
+                <rect x="-12" y="-12" width="24" height="24" rx="6" fill="#0284c7" stroke="#fff" stroke-width="1.5" />
+                <text x="0" y="4" text-anchor="middle" fill="#fff" font-size="11">📷</text>
+              </g>
+              <g onclick="openCctvModal('tol_manyar')" class="cursor-pointer" transform="translate(535, 165)">
+                <rect x="-12" y="-12" width="24" height="24" rx="6" fill="#0284c7" stroke="#fff" stroke-width="1.5" />
+                <text x="0" y="4" text-anchor="middle" fill="#fff" font-size="11">📷</text>
+              </g>
+            </svg>
+
+            <!-- Floating Selected Road Inspector Card -->
+            <div id="road-inspector-card" class="absolute bottom-3 left-3 right-3 sm:right-auto sm:w-96 bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-xl p-3.5 shadow-2xl">
+              <div class="flex items-start justify-between gap-2">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span id="insp-badge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-rose-500/20 text-rose-400 border border-rose-500/40">MACET TRUK BERAT</span>
+                    <span id="insp-speed" class="text-xs font-mono text-slate-300">12 km/jam</span>
+                  </div>
+                  <h3 id="insp-title" class="font-bold text-sm text-white mt-1">Jl. Raya Manyar (Koridor JIIPE)</h3>
+                </div>
+                <button id="insp-cctv-btn" onclick="openCctvModal('jiipe')" class="px-2.5 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-semibold flex items-center gap-1 shrink-0 transition">
+                  <span>CCTV AI</span>
+                </button>
+              </div>
+              <p id="insp-desc" class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                Antrean truk kontainer 40-feet keluar gerbang KEK JIIPE dan kawasan industri. Disarankan belok ke Jalan Alternatif Suci–Pongangan.
+              </p>
+              <div class="grid grid-cols-3 gap-2 mt-2.5 pt-2.5 border-t border-slate-800 text-center">
+                <div>
+                  <div class="text-[10px] text-slate-400">Truk Kontainer</div>
+                  <div id="insp-trucks" class="text-xs font-bold font-mono text-rose-400">18 truk/mnt</div>
+                </div>
+                <div>
+                  <div class="text-[10px] text-slate-400">Rasio Kendaraan</div>
+                  <div id="insp-ratio" class="text-xs font-bold font-mono text-amber-400">68% Truk</div>
+                </div>
+                <div>
+                  <div class="text-[10px] text-slate-400">Jalur Alternatif</div>
+                  <div id="insp-alt" class="text-xs font-bold text-emerald-400 truncate">Suci-Pongangan</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Smart Route Finder (Rute Alternatif Cerdas) -->
+        <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-xl">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h2 class="font-bold text-base text-white">Pencari Rute Alternatif Cerdas</h2>
+                <p class="text-xs text-slate-400">Hindari konvoi truk kontainer & kemacetan pergantian sif</p>
+              </div>
+              <span class="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold">
+                AI Anti-Truk
+              </span>
+            </div>
+
+            <!-- Route Form -->
+            <div class="space-y-3">
+              <!-- Vehicle Type Selector -->
+              <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1.5">Jenis Kendaraan Komuter</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <button type="button" id="veh-motor" onclick="setVehicle('motor')" class="veh-btn flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border border-amber-500 bg-amber-500/15 text-amber-300 text-xs font-bold transition">
+                    <span>🏍️ Sepeda Motor</span>
+                  </button>
+                  <button type="button" id="veh-mobil" onclick="setVehicle('mobil')" class="veh-btn flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border border-slate-700 bg-slate-850 text-slate-300 text-xs font-semibold hover:border-slate-600 transition">
+                    <span>🚗 Mobil Pribadi</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Origin & Destination -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label for="route-origin" class="block text-xs font-medium text-slate-400 mb-1">Titik Berangkat</label>
+                  <select id="route-origin" onchange="calculateSmartRoute()" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-amber-500">
+                    <option value="romokalisari">Romokalisari / Surabaya</option>
+                    <option value="cerme">Cerme / Gresik Selatan</option>
+                    <option value="kebomas">Kebomas / Randuagung</option>
+                    <option value="gresik_kota">Gresik Kota / Alun-alun</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="route-dest" class="block text-xs font-medium text-slate-400 mb-1">Tujuan Kawasan Industri</label>
+                  <select id="route-dest" onchange="calculateSmartRoute()" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-amber-500">
+                    <option value="jiipe">KEK JIIPE Manyar</option>
+                    <option value="maspion">Kawasan Industri Maspion</option>
+                    <option value="veteran">Semen Indonesia / Jl. Veteran</option>
+                    <option value="bunder">Terminal Bunder / Kantor Pemkab</option>
+                  </select>
+                </div>
+              </div>
+
+              <button onclick="calculateSmartRoute(true)" class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs sm:text-sm shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                Hitung Rute Bebas Truk Sekarang
+              </button>
+            </div>
+
+            <!-- Route Comparison Results -->
+            <div id="route-results" class="mt-4 space-y-3">
+              <!-- Primary Route (Congested) -->
+              <div class="p-3.5 rounded-xl bg-rose-950/25 border border-rose-500/30">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                    Jalur Utama (Tidak Disarankan)
+                  </span>
+                  <span id="primary-time" class="font-mono font-bold text-sm text-rose-300">52 mnt</span>
+                </div>
+                <div id="primary-name" class="text-xs font-semibold text-slate-200 mt-1">Via Jl. Veteran – Simpang Kebomas – Jl. Raya Manyar</div>
+                <div class="flex items-center gap-3 mt-1.5 text-[11px] text-rose-300/90">
+                  <span id="primary-trucks">⚠️ 48 Truk Kontainer di jalur</span>
+                  <span id="primary-dist">16.4 km</span>
+                </div>
+              </div>
+
+              <!-- Smart Alternative Route (Recommended) -->
+              <div class="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/50 relative overflow-hidden">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    Rute Alternatif Cerdas (Jalur Tikus Aman)
+                  </span>
+                  <div class="flex items-center gap-2">
+                    <span id="saved-badge" class="px-2 py-0.5 rounded-md bg-emerald-500 text-slate-950 font-extrabold text-[10px]">Hemat 24 mnt</span>
+                    <span id="alt-time" class="font-mono font-bold text-sm text-emerald-300">28 mnt</span>
+                  </div>
+                </div>
+                <div id="alt-name" class="text-xs sm:text-sm font-bold text-white mt-1">Via Tol Romokalisari – Bunder – Peganden – Suci – Pongangan</div>
+                <div class="flex flex-wrap items-center gap-3 mt-1.5 text-[11px] text-emerald-200">
+                  <span id="alt-avoidance" class="font-semibold">🛡️ Skor Bebas Truk: 94%</span>
+                  <span id="alt-dist">17.8 km</span>
+                  <span id="alt-note" class="text-emerald-300/80">Lebar jalan aman untuk motor & mobil</span>
+                </div>
+
+                <!-- Step by step instructions -->
+                <div class="mt-3 pt-2.5 border-t border-emerald-500/20">
+                  <div class="text-[11px] font-semibold text-emerald-300 mb-1.5">Panduan Belokan Singkat:</div>
+                  <ol id="alt-steps" class="space-y-1 text-xs text-slate-200 list-decimal list-inside">
+                    <li>Dari Romokalisari hindari Jl. Veteran, masuk ke arah Terminal Bunder.</li>
+                    <li>Belok kanan masuk koridor Jalur Tikus Peganden menuju Perumahan Pongangan.</li>
+                    <li>Lanjutkan melalui Jalan Alternatif Suci hingga tembus sisi barat gerbang JIIPE Manyar.</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: CCTV AI LALU LINTAS ==================== -->
+    <section id="tab-cctv" class="tab-content hidden space-y-5">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <div>
+          <h2 class="font-bold text-base sm:text-lg text-white flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-sky-400 animate-ping"></span>
+            Pemantauan CCTV AI Deteksi Truk Berat (Computer Vision)
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">Integrasi kamera Dishub Gresik & Kawasan Industri dengan deteksi otomatis jenis kendaraan secara real-time</p>
+        </div>
+        <button onclick="simulateAiRefresh()" class="px-4 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-bold transition self-start sm:self-auto">
+          🔄 Perbarui Deteksi AI
+        </button>
+      </div>
+
+      <!-- 4 CCTV Grid -->
+      <div id="cctv-grid" class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <!-- Populated dynamically via JS -->
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: LAPOR WARGA (CROWDSOURCING) ==================== -->
+    <section id="tab-lapor" class="tab-content hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left: Submit Live Report Form -->
+        <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-5 h-fit">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="font-bold text-base text-white">Kirim Laporan Kondisi Jalan</h2>
+            <span class="px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 text-[11px] font-bold">
+              Poin Komunitas: <span id="user-trust-points">120</span> pts
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 mb-4">Bantu sesama pekerja & warga Gresik menghindari antrean truk atau hambatan jalan secara real-time.</p>
+
+          <form id="crowd-report-form" onsubmit="submitCrowdReport(event)" class="space-y-3.5">
+            <div>
+              <label for="rep-location" class="block text-xs font-medium text-slate-300 mb-1">Lokasi Titik di Gresik</label>
+              <select id="rep-location" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-amber-500">
+                <option value="Jl. Raya Manyar (Depan Gerbang JIIPE)">Jl. Raya Manyar (Depan Gerbang JIIPE)</option>
+                <option value="Simpang Empat Kebomas">Simpang Empat Kebomas</option>
+                <option value="Jl. Veteran (Area Pabrik Semen)">Jl. Veteran (Area Pabrik Semen)</option>
+                <option value="Exit Tol Romokalisari / Segoromadu">Exit Tol Romokalisari / Segoromadu</option>
+                <option value="Jalan Alternatif Suci - Pongangan">Jalan Alternatif Suci - Pongangan</option>
+                <option value="Jalur Tikus Peganden - Bunder">Jalur Tikus Peganden - Bunder</option>
+                <option value="Jl. Daendels (Sembayat - Manyar)">Jl. Daendels (Sembayat - Manyar)</option>
+                <option value="Koridor Cerme - Terminal Bunder">Koridor Cerme - Terminal Bunder</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="rep-category" class="block text-xs font-medium text-slate-300 mb-1">Kategori Kejadian</label>
+              <select id="rep-category" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-amber-500">
+                <option value="Antrean Truk Pelabuhan">🚛 Antrean Truk Pelabuhan / Pabrik</option>
+                <option value="Pergantian Sif Pabrik">🏭 Kepadatan Pergantian Sif Pabrik</option>
+                <option value="Truk Mogok / Kecelakaan">🚨 Truk Mogok / Kecelakaan Lalu Lintas</option>
+                <option value="Banjir / Genangan">🌊 Banjir / Genangan Air Hujan</option>
+                <option value="Jalan Rusak / Berlubang">⚠️ Jalan Rusak / Gelombang Aspal Truk</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="rep-note" class="block text-xs font-medium text-slate-300 mb-1">Catatan Singkat Lapangan</label>
+              <textarea id="rep-note" rows="3" required placeholder="Contoh: Ekor antrean truk kontainer sampai SPBU Manyar, motor disarankan lewat Suci..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"></textarea>
+            </div>
+
+            <div>
+              <label for="rep-reporter" class="block text-xs font-medium text-slate-300 mb-1">Nama / Identitas Komuter (Opsional)</label>
+              <input id="rep-reporter" type="text" placeholder="Contoh: Raka (Pekerja Sif 2 Manyar)" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500" />
+            </div>
+
+            <button type="submit" class="w-full py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-rose-600/20 transition">
+              📢 Publikasikan Laporan Real-Time (+15 Poin)
+            </button>
+          </form>
+        </div>
+
+        <!-- Right: Live Crowdsourced Feed -->
+        <div class="lg:col-span-7 space-y-3">
+          <div class="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-2xl px-4 py-3">
+            <div>
+              <h3 class="font-bold text-sm sm:text-base text-white">Linimasa Laporan Warga & Pekerja Gresik</h3>
+              <p class="text-xs text-slate-400">Verifikasi laporan untuk menjaga akurasi peta navigasi</p>
+            </div>
+            <span class="text-xs font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-lg">Live Feed</span>
+          </div>
+
+          <div id="crowd-feed-list" class="space-y-3">
+            <!-- Populated dynamically via JS -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 4: JADWAL SIF & PREDIKSI ==================== -->
+    <section id="tab-sif" class="tab-content hidden space-y-5">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <h2 class="font-bold text-base sm:text-lg text-white">Kalender Puncak Kepadatan Sif Pabrik & Bongkar Muat Gresik</h2>
+        <p class="text-xs text-slate-400 mt-1">Pola kemacetan di Kabupaten Gresik sangat dipengaruhi oleh jadwal pergantian sif kawasan industri (JIIPE, Maspion, Semen Indonesia, Petrokimia) dan jadwal keluar-masuk truk pelabuhan.</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
+          <!-- Shift 1 -->
+          <div class="p-4 rounded-2xl bg-slate-950 border border-amber-500/40">
+            <div class="flex items-center justify-between mb-2">
+              <span class="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 text-xs font-bold">SIF 1 PAGI (07:00 WIB)</span>
+              <span class="text-xs font-mono text-rose-400 font-bold">Risiko: TINGGI</span>
+            </div>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              Puncak kepadatan terjadi pukul <strong>06:15 – 07:30 WIB</strong>. Ribuan sepeda motor pekerja dari arah Surabaya, Cerme, dan Gresik Kota bertemu truk logistik pagi di Simpang Kebomas & Jl. Raya Manyar.
+            </p>
+            <div class="mt-3 pt-2.5 border-t border-slate-800 text-xs text-emerald-400 font-semibold">
+              ✅ Rekomendasi: Berangkat sebelum 06:10 WIB atau gunakan Jalur Peganden–Suci.
+            </div>
+          </div>
+
+          <!-- Shift 2 -->
+          <div class="p-4 rounded-2xl bg-slate-950 border border-rose-500/50">
+            <div class="flex items-center justify-between mb-2">
+              <span class="px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 text-xs font-bold">SIF 2 SORE (15:00 WIB)</span>
+              <span class="text-xs font-mono text-rose-400 font-bold">Risiko: EKSTREM</span>
+            </div>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              Titik paling krusial pukul <strong>14:30 – 17:00 WIB</strong>. Bersamaan dengan kepulangan pekerja sif pagi, masuknya pekerja sif sore, serta pelepasan truk kontainer dari pelabuhan.
+            </p>
+            <div class="mt-3 pt-2.5 border-t border-slate-800 text-xs text-emerald-400 font-semibold">
+              ✅ Rekomendasi: Hindari Jl. Veteran & Jl. Raya Manyar total pada jam ini.
+            </div>
+          </div>
+
+          <!-- Shift 3 -->
+          <div class="p-4 rounded-2xl bg-slate-950 border border-sky-500/40">
+            <div class="flex items-center justify-between mb-2">
+              <span class="px-2.5 py-1 rounded-lg bg-sky-500/20 text-sky-300 text-xs font-bold">SIF 3 MALAM (23:00 WIB)</span>
+              <span class="text-xs font-mono text-amber-400 font-bold">Risiko: SEDANG</span>
+            </div>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              Volume motor menurun, namun <strong>konvoi truk gandeng & trailer</strong> mendominasi ruas Jl. Daendels dan Exit Tol Romokalisari pukul <strong>22:00 – 00:30 WIB</strong>.
+            </p>
+            <div class="mt-3 pt-2.5 border-t border-slate-800 text-xs text-emerald-400 font-semibold">
+              ✅ Rekomendasi: Waspada titik blind-spot truk besar & penerangan jalan.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Interactive CCTV AI Modal -->
+  <div id="cctv-modal" class="fixed inset-0 z-50 hidden bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl">
+      <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+          <h3 id="modal-cctv-title" class="font-bold text-sm sm:text-base text-white">CCTV AI - Simpang Empat Kebomas</h3>
+        </div>
+        <button onclick="closeCctvModal()" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="modal-cctv-body" class="p-4">
+        <!-- Injected dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-slate-900 border-t border-slate-800 py-4 px-4 text-center text-xs text-slate-400 mt-auto">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+      <span><strong>GRESIK-COMMUTE</strong> — Prototipe Aplikasi PKM-Karsa Cipta (PKM-KC)</span>
+      <span>Solusi Mobilitas Cerdas Komuter & Mitigasi Kepadatan Truk Kawasan Industri Gresik</span>
+    </div>
+  </footer>
+
+  <script>
+    // ==================== DATA STORE ====================
+    const roadData = {
+      manyar: {
+        title: "Jl. Raya Manyar (Koridor JIIPE & KIM)",
+        status: "MACET TRUK BERAT",
+        badgeClass: "bg-rose-500/20 text-rose-400 border-rose-500/40",
+        speed: "12 km/jam",
+        trucks: "18 truk/mnt",
+        ratio: "68% Truk",
+        alt: "Suci-Pongangan",
+        cctvId: "jiipe",
+        desc: "Antrean truk kontainer 40-feet keluar gerbang KEK JIIPE dan kawasan industri. Disarankan belok ke Jalan Alternatif Suci–Pongangan."
+      },
+      kebomas: {
+        title: "Simpang Empat Kebomas – Jl. Dr. Wahidin",
+        status: "MACET PERGANTIAN SIF",
+        badgeClass: "bg-rose-500/20 text-rose-400 border-rose-500/40",
+        speed: "14 km/jam",
+        trucks: "15 truk/mnt",
+        ratio: "54% Truk",
+        alt: "Tikus Peganden",
+        cctvId: "kebomas",
+        desc: "Pertemuan arus truk dari Exit Tol Kebomas dengan komuter pekerja pabrik. Gunakan Jalur Tikus Peganden–Bunder untuk menghindari simpang."
+      },
+      veteran: {
+        title: "Jl. Veteran (Segoromadu – Semen Indonesia)",
+        status: "PADAT TRUK GANDENG",
+        badgeClass: "bg-rose-500/20 text-rose-400 border-rose-500/40",
+        speed: "15 km/jam",
+        trucks: "16 truk/mnt",
+        ratio: "62% Truk",
+        alt: "Tol / Bunder",
+        cctvId: "veteran",
+        desc: "Dominasi truk pengangkut material semen & kontainer menuju Surabaya. Komuter motor disarankan lewat jalur dalam kota/Bunder."
+      },
+      romokalisari: {
+        title: "Exit Tol Romokalisari – Batas Surabaya",
+        status: "PADAT MERAYAP",
+        badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+        speed: "22 km/jam",
+        trucks: "14 truk/mnt",
+        ratio: "50% Truk",
+        alt: "Jalur Cerme/Bunder",
+        cctvId: "veteran",
+        desc: "Penyempitan lajur keluar gerbang tol menjelang pergantian sif pekerja."
+      },
+      daendels: {
+        title: "Jl. Daendels (Manyar – Sembayat)",
+        status: "PADAT LANCAR",
+        badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+        speed: "28 km/jam",
+        trucks: "11 truk/mnt",
+        ratio: "45% Truk",
+        alt: "Suci-Pongangan",
+        cctvId: "jiipe",
+        desc: "Arus truk logistik pantura bergerak stabil, waspadai truk berbelok menuju area pergudangan."
+      },
+      suci: {
+        title: "Jalan Alternatif Suci – Pongangan",
+        status: "JALUR AMAN LANCAR",
+        badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+        speed: "38 km/jam",
+        trucks: "0 truk/mnt",
+        ratio: "0% Truk Berat",
+        alt: "Rute Utama AI",
+        cctvId: "tol_manyar",
+        desc: "Jalur komuter bebas truk kontainer! Direkomendasikan untuk pekerja menuju Manyar dan Perumahan Pongangan."
+      },
+      peganden: {
+        title: "Jalur Tikus Peganden – Terminal Bunder",
+        status: "JALUR TIKUS LANCAR",
+        badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+        speed: "40 km/jam",
+        trucks: "0 truk/mnt",
+        ratio: "0% Truk Berat",
+        alt: "Rute Utama AI",
+        cctvId: "kebomas",
+        desc: "Rute pintas efektif memotong kemacetan Simpang Empat Kebomas. Aman dilalui sepeda motor maupun mobil pribadi."
+      },
+      cerme: {
+        title: "Koridor Cerme – Terminal Bunder",
+        status: "LANCAR TERKENDALI",
+        badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+        speed: "42 km/jam",
+        trucks: "3 truk/mnt",
+        ratio: "12% Truk",
+        alt: "Langsung Bunder",
+        cctvId: "kebomas",
+        desc: "Akses komuter dari wilayah Gresik Selatan terpantau lancar menuju simpul Terminal Bunder."
+      }
+    };
+
+    const cctvFeeds = [
+      {
+        id: "kebomas",
+        name: "CAM-01: Simpang Empat Kebomas",
+        location: "Pertemuan Jl. Dr. Wahidin & Exit Tol Kebomas",
+        density: 84,
+        level: "MACET BERAT",
+        levelColor: "text-rose-400 bg-rose-500/20 border-rose-500/40",
+        containers: 14,
+        trailers: 5,
+        motorbikes: 68,
+        boxes: [
+          { label: "Truk Kontainer 98%", color: "#ef4444", x: 14, y: 38, w: 32, h: 36 },
+          { label: "Truk Gandeng 95%", color: "#f97316", x: 52, y: 42, w: 28, h: 32 },
+          { label: "Motor Komuter (18)", color: "#10b981", x: 18, y: 76, w: 46, h: 18 }
+        ]
+      },
+      {
+        id: "jiipe",
+        name: "CAM-02: Gerbang Utama KEK JIIPE Manyar",
+        location: "Jl. Raya Manyar KM 11",
+        density: 89,
+        level: "ANTREAN TRUK",
+        levelColor: "text-rose-400 bg-rose-500/20 border-rose-500/40",
+        containers: 19,
+        trailers: 7,
+        motorbikes: 42,
+        boxes: [
+          { label: "Truk Kontainer 99%", color: "#ef4444", x: 10, y: 32, w: 36, h: 42 },
+          { label: "Truk Kontainer 96%", color: "#ef4444", x: 49, y: 36, w: 34, h: 38 },
+          { label: "Motor Komuter (9)", color: "#10b981", x: 64, y: 76, w: 26, h: 17 }
+        ]
+      },
+      {
+        id: "veteran",
+        name: "CAM-03: Pertigaan Jl. Veteran",
+        location: "Koridor Semen Indonesia – Segoromadu",
+        density: 76,
+        level: "PADAT TRUK",
+        levelColor: "text-amber-300 bg-amber-500/20 border-amber-500/40",
+        containers: 11,
+        trailers: 8,
+        motorbikes: 54,
+        boxes: [
+          { label: "Truk Gandeng 97%", color: "#f97316", x: 22, y: 35, w: 38, h: 38 },
+          { label: "Motor Komuter (14)", color: "#10b981", x: 12, y: 75, w: 40, h: 18 }
+        ]
+      },
+      {
+        id: "tol_manyar",
+        name: "CAM-04: Simpul Exit Tol Manyar / Suci",
+        location: "Akses Masuk Alternatif Suci-Pongangan",
+        density: 41,
+        level: "LANCAR TERKENDALI",
+        levelColor: "text-emerald-300 bg-emerald-500/20 border-emerald-500/40",
+        containers: 3,
+        trailers: 1,
+        motorbikes: 39,
+        boxes: [
+          { label: "Motor Komuter (12)", color: "#10b981", x: 25, y: 58, w: 44, h: 24 },
+          { label: "Truk Box 92%", color: "#38bdf8", x: 65, y: 36, w: 22, h: 26 }
+        ]
+      }
+    ];
+
+    let crowdReports = [
+      {
+        id: 1,
+        location: "Jl. Raya Manyar (Depan Gerbang JIIPE)",
+        category: "Antrean Truk Pelabuhan",
+        note: "Antrean truk kontainer keluar-masuk pelabuhan mengular 1,5 km arah Sembayat. Motor wajib belok lewat Suci-Pongangan!",
+        reporter: "Dimas P. (Operator Sif 2 JIIPE)",
+        time: "4 menit lalu",
+        upvotes: 29,
+        voted: false
+      },
+      {
+        id: 2,
+        location: "Simpang Empat Kebomas",
+        category: "Pergantian Sif Pabrik",
+        note: "Lampu merah Kebomas tertahan iring-iringan truk trailer dari tol. Jalur tikus Peganden arah Bunder terpantau mulus.",
+        reporter: "Siti Rahma (Komuter Cerme)",
+        time: "11 menit lalu",
+        upvotes: 18,
+        voted: false
+      },
+      {
+        id: 3,
+        location: "Jl. Veteran (Area Pabrik Semen)",
+        category: "Truk Mogok / Kecelakaan",
+        note: "Ada truk tronton patah as roda di lajur kiri arah Romokalisari. Lajur menyempit, harap ambil rute alternatif.",
+        reporter: "Hendra W. (Driver Ojol Gresik)",
+        time: "19 menit lalu",
+        upvotes: 42,
+        voted: false
+      },
+      {
+        id: 4,
+        location: "Jalan Alternatif Suci - Pongangan",
+        category: "Pergantian Sif Pabrik",
+        note: "Kondisi ramai lancar, tidak ada truk besar melintas. Aman untuk motor maupun mobil pribadi.",
+        reporter: "Arif Kurniawan (Warga Pongangan)",
+        time: "27 menit lalu",
+        upvotes: 15,
+        voted: false
+      }
+    ];
+
+    let selectedVehicle = 'motor';
+    let userPoints = 120;
+
+    // ==================== INITIALIZATION ====================
+    window.onload = function () {
+      updateClock();
+      setInterval(updateClock, 1000);
+      calculateSmartRoute(false);
+      renderCctvGrid();
+      renderCrowdReports();
+    };
+
+    // Live Clock & Dynamic Shift Detector
+    function updateClock() {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('id-ID', { hour12: false }) + " WIB";
+      document.getElementById('live-clock').textContent = timeStr;
+
+      const hour = now.getHours();
+      const shiftLabel = document.getElementById('shift-label');
+      if (hour >= 5 && hour < 13) {
+        shiftLabel.textContent = "Sif 1 Pagi (07:00)";
+      } else if (hour >= 13 && hour < 21) {
+        shiftLabel.textContent = "Sif 2 Sore (15:00)";
+      } else {
+        shiftLabel.textContent = "Sif 3 Malam (23:00)";
+      }
+    }
+
+    // Tab Navigation
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById('tab-' + tabName).classList.remove('hidden');
+
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('bg-amber-500', 'text-slate-950', 'shadow-md', 'shadow-amber-500/20');
+        btn.classList.add('text-slate-300', 'hover:bg-slate-800');
+      });
+
+      const activeBtn = document.getElementById('tab-btn-' + tabName);
+      activeBtn.classList.remove('text-slate-300', 'hover:bg-slate-800');
+      activeBtn.classList.add('bg-amber-500', 'text-slate-950', 'shadow-md', 'shadow-amber-500/20');
+    }
+
+    // Toast Helper (No alert() used!)
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const colors = type === 'success'
+        ? 'bg-emerald-950/95 border-emerald-500 text-emerald-100'
+        : 'bg-amber-950/95 border-amber-500 text-amber-100';
+
+      toast.className = `pointer-events-auto border ${colors} px-4 py-3 rounded-xl shadow-2xl text-xs font-medium flex items-center justify-between gap-3 transition-all duration-300`;
+      toast.innerHTML = `<span>${message}</span>`;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }, 3200);
+    }
+
+    // ==================== MAP INTERACTION ====================
+    function selectRoad(roadKey) {
+      const data = roadData[roadKey];
+      if (!data) return;
+
+      const badge = document.getElementById('insp-badge');
+      badge.textContent = data.status;
+      badge.className = `px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${data.badgeClass}`;
+
+      document.getElementById('insp-speed').textContent = data.speed;
+      document.getElementById('insp-title').textContent = data.title;
+      document.getElementById('insp-desc').textContent = data.desc;
+      document.getElementById('insp-trucks').textContent = data.trucks;
+      document.getElementById('insp-ratio').textContent = data.ratio;
+      document.getElementById('insp-alt').textContent = data.alt;
+      document.getElementById('insp-cctv-btn').setAttribute('onclick', `openCctvModal('${data.cctvId}')`);
+    }
+
+    // ==================== SMART ROUTE FINDER ====================
+    function setVehicle(veh) {
+      selectedVehicle = veh;
+      const motorBtn = document.getElementById('veh-motor');
+      const mobilBtn = document.getElementById('veh-mobil');
+
+      if (veh === 'motor') {
+        motorBtn.className = "veh-btn flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border border-amber-500 bg-amber-500/15 text-amber-300 text-xs font-bold transition";
+        mobilBtn.className = "veh-btn flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border border-slate-700 bg-slate-850 text-slate-300 text-xs font-semibold hover:border-slate-600 transition";
+      } else {
+        mobilBtn.className = "veh-btn flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border border-amber-500 bg-amber-500/15 text-amber-300 text-xs font-bold transition";
+        motorBtn.className = "veh-btn flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border border-slate-700 bg-slate-850 text-slate-300 text-xs font-semibold hover:border-slate-600 transition";
+      }
+      calculateSmartRoute(false);
+    }
+
+    function calculateSmartRoute(notify = false) {
+      const origin = document.getElementById('route-origin').value;
+      const dest = document.getElementById('route-dest').value;
+      const isMotor = selectedVehicle === 'motor';
+
+      const routeMatrix = {
+        "romokalisari-jiipe": {
+          pName: "Via Jl. Veteran – Simpang Kebomas – Jl. Raya Manyar",
+          pTime: isMotor ? 48 : 58,
+          pTrucks: "48 Truk Kontainer",
+          pDist: "16.4 km",
+          aName: isMotor ? "Via Bunder – Jalur Tikus Peganden – Suci – Pongangan" : "Via Tol Romokalisari–Manyar – Akses Barat Suci",
+          aTime: isMotor ? 25 : 33,
+          avoidance: isMotor ? "96%" : "88%",
+          aDist: isMotor ? "17.8 km" : "19.2 km",
+          note: isMotor ? "Jalur tikus lebar 4m, bebas truk kontainer" : "Akses jalan poros desa beraspal mulus untuk mobil",
+          steps: isMotor ? [
+            "Dari Romokalisari arahkan ke Terminal Bunder (hindari Jl. Veteran).",
+            "Masuk Jalur Tikus Peganden menuju Perumahan Pongangan.",
+            "Lanjut Jalan Alternatif Suci hingga tembus sisi barat gerbang KEK JIIPE."
+          ] : [
+            "Masuk Gerbang Tol Romokalisari menuju Exit Tol Manyar.",
+            "Ambil jalur penghubung Suci–Pongangan untuk menghindari antrean pintu utama JIIPE.",
+            "Masuk melalui gerbang logistik sekunder sisi barat."
+          ]
+        },
+        "cerme-jiipe": {
+          pName: "Via Terminal Bunder – Simpang Kebomas – Jl. Raya Manyar",
+          pTime: isMotor ? 44 : 52,
+          pTrucks: "39 Truk Kontainer",
+          pDist: "14.8 km",
+          aName: "Via Bunder – Jalur Tikus Peganden – Suci – Pongangan",
+          aTime: isMotor ? 23 : 29,
+          avoidance: "95%",
+          aDist: "15.5 km",
+          note: "Memotong kemacetan Simpang Kebomas & Jl. Raya Manyar",
+          steps: [
+            "Dari Cerme menuju Terminal Bunder lalu belok kiri sebelum flyover.",
+            "Masuk koridor Peganden – Pongangan (0% truk kontainer).",
+            "Teruskan ke Jalan Alternatif Suci langsung menuju kawasan Manyar/JIIPE."
+          ]
+        },
+        "kebomas-maspion": {
+          pName: "Via Simpang Empat Kebomas – Jl. Raya Manyar",
+          pTime: isMotor ? 32 : 40,
+          pTrucks: "31 Truk Kontainer",
+          pDist: "9.2 km",
+          aName: "Via Jalan Alternatif Suci – Pongangan – Tembus Manyar",
+          aTime: isMotor ? 16 : 21,
+          avoidance: "94%",
+          aDist: "10.1 km",
+          note: "Aman dari antrean keluar truk Kawasan Industri Maspion",
+          steps: [
+            "Hindari jalur arteri depan kantor kecamatan Kebomas.",
+            "Ambil jalur dalam lewat Pongangan menuju Jalan Alternatif Suci.",
+            "Keluar di pertigaan utara dekat gerbang Kawasan Industri Maspion."
+          ]
+        }
+      };
+
+      const key = `${origin}-${dest}`;
+      const selected = routeMatrix[key] || {
+        pName: `Jalur Arteri Utama (${origin.toUpperCase()} → ${dest.toUpperCase()})`,
+        pTime: isMotor ? 38 : 46,
+        pTrucks: "35 Truk Kontainer",
+        pDist: "12.5 km",
+        aName: isMotor ? "Koridor Alternatif Peganden – Suci – Pongangan" : "Koridor Lingkar Bunder – Alternatif Suci",
+        aTime: isMotor ? 20 : 26,
+        avoidance: "92%",
+        aDist: "13.4 km",
+        note: isMotor ? "Optimal untuk sepeda motor komuter" : "Disesuaikan untuk dimensi mobil pribadi",
+        steps: [
+          "Hindari titik temu truk berat di Simpang Empat Kebomas & Jl. Veteran.",
+          "Gunakan koridor penyangga permukiman Peganden – Suci – Pongangan.",
+          "Masuk ke kawasan tujuan melalui pintu gerbang sisi barat."
+        ]
+      };
+
+      const saved = selected.pTime - selected.aTime;
+      document.getElementById('primary-time').textContent = `${selected.pTime} mnt`;
+      document.getElementById('primary-name').textContent = selected.pName;
+      document.getElementById('primary-trucks').textContent = `⚠️ ${selected.pTrucks} di jalur`;
+      document.getElementById('primary-dist').textContent = selected.pDist;
+
+      document.getElementById('saved-badge').textContent = `Hemat ${saved} mnt`;
+      document.getElementById('alt-time').textContent = `${selected.aTime} mnt`;
+      document.getElementById('alt-name').textContent = selected.aName;
+      document.getElementById('alt-avoidance').textContent = `🛡️ Skor Bebas Truk: ${selected.avoidance}`;
+      document.getElementById('alt-dist').textContent = selected.aDist;
+      document.getElementById('alt-note').textContent = selected.note;
+      document.getElementById('kpi-time-saved').innerHTML = `${saved} <span class="text-xs font-sans font-normal text-slate-400">menit</span>`;
+
+      const stepsList = document.getElementById('alt-steps');
+      stepsList.innerHTML = selected.steps.map(s => `<li>${s}</li>`).join('');
+
+      if (notify) {
+        showToast(`Rute cerdas diperbarui! Anda hemat ${saved} menit dengan menghindari ${selected.pTrucks}.`);
+      }
+    }
+
+    // ==================== AI CCTV MONITOR ====================
+    function renderCctvSvg(cam) {
+      const boxesSvg = cam.boxes.map(b => `
+        <g>
+          <rect x="${b.x}%" y="${b.y}%" width="${b.w}%" height="${b.h}%" fill="${b.color}22" stroke="${b.color}" stroke-width="2" rx="4" />
+          <rect x="${b.x}%" y="${Math.max(4, b.y - 9)}%" width="${Math.min(48, b.w + 10)}%" height="9%" fill="${b.color}" rx="3" />
+          <text x="${b.x + 1.5}%" y="${Math.max(10.5, b.y - 2.5)}%" fill="#0f172a" font-size="10" font-weight="800" font-family="JetBrains Mono">${b.label}</text>
+        </g>
+      `).join('');
+
+      return `
+        <div class="relative w-full aspect-video bg-slate-950 rounded-xl overflow-hidden border border-slate-800">
+          <!-- Simulated Road Perspective SVG -->
+          <svg viewBox="0 0 400 225" class="w-full h-full">
+            <rect width="400" height="225" fill="#0b1120" />
+            <!-- Horizon & Sky -->
+            <rect width="400" height="65" fill="#1e293b" opacity="0.5" />
+            <!-- Industrial silhouettes -->
+            <rect x="20" y="30" width="45" height="35" fill="#334155" opacity="0.5" />
+            <rect x="310" y="25" width="60" height="40" fill="#334155" opacity="0.5" />
+            <!-- Asphalt Perspective -->
+            <polygon points="110,65 290,65 395,225 5,225" fill="#1e293b" />
+            <line x1="200" y1="65" x2="200" y2="225" stroke="#f59e0b" stroke-width="2" stroke-dasharray="12,10" opacity="0.6" />
+            <!-- Stylized Truck & Motor Silhouettes -->
+            <rect x="65" y="92" width="115" height="72" rx="6" fill="#475569" />
+            <rect x="205" y="100" width="105" height="65" rx="6" fill="#334155" />
+            <rect x="85" y="175" width="165" height="32" rx="6" fill="#0f172a" opacity="0.85" />
+            <!-- AI Computer Vision Bounding Boxes -->
+            ${boxesSvg}
+          </svg>
+          <!-- Scanline Effect -->
+          <div class="cctv-scanline absolute inset-x-0 h-8 bg-gradient-to-b from-transparent via-sky-400/15 to-transparent pointer-events-none"></div>
+          <!-- Overlay HUD -->
+          <div class="absolute top-2.5 left-2.5 bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded-md border border-slate-700 font-mono text-[10px] text-emerald-400 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+            AI YOLOv8-GRESIK • 30 FPS
+          </div>
+          <div class="absolute bottom-2.5 right-2.5 bg-slate-950/85 backdrop-blur px-2.5 py-1 rounded-md border border-slate-700 font-mono text-[11px] text-white">
+            Kepadatan: <span class="font-bold text-amber-400">${cam.density}%</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderCctvGrid() {
+      const grid = document.getElementById('cctv-grid');
+      grid.innerHTML = cctvFeeds.map(cam => `
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <h3 class="font-bold text-sm text-white">${cam.name}</h3>
+              <p class="text-xs text-slate-400">${cam.location}</p>
+            </div>
+            <span class="px-2.5 py-1 rounded-lg border text-[10px] font-bold ${cam.levelColor}">${cam.level}</span>
+          </div>
+          ${renderCctvSvg(cam)}
+          <div class="grid grid-cols-3 gap-2 pt-1 text-center">
+            <div class="bg-slate-950 border border-slate-800 rounded-xl py-2">
+              <div class="text-[10px] text-slate-400">Truk Kontainer</div>
+              <div class="font-mono font-bold text-sm text-rose-400">${cam.containers}</div>
+            </div>
+            <div class="bg-slate-950 border border-slate-800 rounded-xl py-2">
+              <div class="text-[10px] text-slate-400">Truk Gandeng</div>
+              <div class="font-mono font-bold text-sm text-amber-400">${cam.trailers}</div>
+            </div>
+            <div class="bg-slate-950 border border-slate-800 rounded-xl py-2">
+              <div class="text-[10px] text-slate-400">Motor Komuter</div>
+              <div class="font-mono font-bold text-sm text-emerald-400">${cam.motorbikes}</div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function simulateAiRefresh() {
+      cctvFeeds.forEach(cam => {
+        const delta = Math.floor(Math.random() * 7) - 3;
+        cam.density = Math.min(98, Math.max(25, cam.density + delta));
+        cam.containers = Math.max(1, cam.containers + (Math.floor(Math.random() * 3) - 1));
+      });
+      renderCctvGrid();
+      showToast("Deteksi AI Computer Vision pada 4 kamera CCTV Gresik telah diperbarui.");
+    }
+
+    function openCctvModal(camId) {
+      const cam = cctvFeeds.find(c => c.id === camId) || cctvFeeds[0];
+      document.getElementById('modal-cctv-title').textContent = cam.name;
+      document.getElementById('modal-cctv-body').innerHTML = `
+        <div class="space-y-3">
+          <p class="text-xs text-slate-400">${cam.location} — Deteksi Objek Kendaraan Real-Time</p>
+          ${renderCctvSvg(cam)}
+          <div class="grid grid-cols-3 gap-3 text-center">
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+              <div class="text-xs text-slate-400">Truk Kontainer</div>
+              <div class="font-mono font-bold text-base text-rose-400">${cam.containers} unit</div>
+            </div>
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+              <div class="text-xs text-slate-400">Truk Gandeng</div>
+              <div class="font-mono font-bold text-base text-amber-400">${cam.trailers} unit</div>
+            </div>
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+              <div class="text-xs text-slate-400">Motor Komuter</div>
+              <div class="font-mono font-bold text-base text-emerald-400">${cam.motorbikes} unit</div>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('cctv-modal').classList.remove('hidden');
+    }
+
+    function closeCctvModal() {
+      document.getElementById('cctv-modal').classList.add('hidden');
+    }
+
+    // ==================== CROWDSOURCING REPORTS ====================
+    function renderCrowdReports() {
+      const list = document.getElementById('crowd-feed-list');
+      document.getElementById('report-count-badge').textContent = crowdReports.length;
+
+      list.innerHTML = crowdReports.map(rep => `
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 transition hover:border-slate-700">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+            <span class="px-2.5 py-0.5 rounded-md bg-rose-500/15 text-rose-300 border border-rose-500/30 text-[11px] font-bold">
+              ${rep.category}
+            </span>
+            <span class="text-[11px] text-slate-400">${rep.time}</span>
+          </div>
+          <h4 class="font-bold text-sm text-white">${rep.location}</h4>
+          <p class="text-xs text-slate-300 mt-1 leading-relaxed">${rep.note}</p>
+          <div class="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-800">
+            <span class="text-[11px] text-slate-400">Oleh: <strong class="text-slate-300">${rep.reporter}</strong></span>
+            <button onclick="upvoteReport(${rep.id})" class="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+              rep.voted
+                ? 'bg-emerald-500 text-slate-950'
+                : 'bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30'
+            }">
+              <span>👍 Valid / Masih Macet</span>
+              <span class="font-mono">(${rep.upvotes})</span>
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function submitCrowdReport(e) {
+      e.preventDefault();
+      const location = document.getElementById('rep-location').value;
+      const category = document.getElementById('rep-category').value;
+      const note = document.getElementById('rep-note').value.trim();
+      const reporterInput = document.getElementById('rep-reporter').value.trim();
+      const reporter = reporterInput || "Komuter Gresik (Terverifikasi)";
+
+      const newReport = {
+        id: Date.now(),
+        location,
+        category,
+        note,
+        reporter,
+        time: "Baru saja",
+        upvotes: 1,
+        voted: true
+      };
+
+      crowdReports.unshift(newReport);
+      userPoints += 15;
+      document.getElementById('user-trust-points').textContent = userPoints;
+      document.getElementById('crowd-report-form').reset();
+      renderCrowdReports();
+      showToast("Laporan berhasil dipublikasikan ke peta Gresik! (+15 Poin Komunitas)");
+    }
+
+    function upvoteReport(id) {
+      const target = crowdReports.find(r => r.id === id);
+      if (!target) return;
+      if (!target.voted) {
+        target.upvotes += 1;
+        target.voted = true;
+        userPoints += 5;
+        document.getElementById('user-trust-points').textContent = userPoints;
+        renderCrowdReports();
+        showToast("Terima kasih telah memvalidasi kondisi jalan! (+5 Poin)");
+      }
+    }
+  </script>
+</body>
+</html>
